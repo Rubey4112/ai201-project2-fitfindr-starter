@@ -32,7 +32,7 @@ Return a list of dictionary. Each item in the list is clothing item in the listi
 
 Best match is put first
 
-Sample return:
+**Sample return:**
 ```python
 [
     {
@@ -60,6 +60,19 @@ Sample return:
         "colors": ["brown", "cream", "tan"],
         "brand": null,
         "platform": "thredUp"
+    },
+    {
+        "id": "lst_032",
+        "title": "Shacket — Olive Canvas",
+        "description": "Olive canvas shacket — thicker than a shirt, lighter than a jacket. Chest pockets, button-front. Great transitional layer.",
+        "category": "outerwear",
+        "style_tags": ["earth tones", "classic", "layering", "minimal"],
+        "size": "M/L",
+        "condition": "excellent",
+        "price": 33.00,
+        "colors": ["olive", "green"],
+        "brand": null,
+        "platform": "poshmark"
     }
 ]
 ```
@@ -68,7 +81,7 @@ Sample return:
 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if no listings match? -->
-It should return an empty list. The agent should then report to the user that no matching item can be found in the listing and recommend that user to find a different item.
+It should return an empty list. The agent should then report to the user that no matching item can be found in the listing and recommend that user to look for a different item.
 
 ---
 
@@ -151,9 +164,9 @@ For each tool, describe the specific failure mode you're handling and what the a
 
 | Tool | Failure mode | Agent response |
 |------|-------------|----------------|
-| search_listings | No results match the query | |
-| suggest_outfit | Wardrobe is empty | |
-| create_fit_card | Outfit input is missing or incomplete | |
+| search_listings | No results match the query | Session exit early, agent response that no listing matches query |
+| suggest_outfit | Wardrobe is empty | Session exit early, agent respond that the wardrobe is empty and ask the user to add more item to their wardrobe |
+| create_fit_card | Outfit input is missing or incomplete | The agent surfaces that message to the user and prompts them to first run `suggest_outfit` to generate an outfit before requesting a fit card. |
 
 ---
 
@@ -179,9 +192,11 @@ flowchart TD
     C -- "results=[item, ...]" --> F["Session: selected_item = results[0]"]
 
     F --> G["suggest_outfit(selected_item, wardrobe)"]
+    G -- "Wardrobe is empty or no matching item" --> L["Session exit early, agent respond that the wardrobe is empty or that there is no matching item and ask the user to add more item to their wardrobe"]
     G --> H["Session: outfit_suggestion = '...'"]
 
     H --> I["create_fit_card(outfit_suggestion, selected_item)"]
+    H -- "Outfit input is missing or incomplete" -->M["The agent surfaces that message to the user and prompts them to first run `suggest_outfit` to generate an outfit before requesting a fit card."]
     I --> J["Session: fit_card = '...'"]
 
     J --> K([Return session])
