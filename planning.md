@@ -116,7 +116,25 @@ For each tool, describe the specific failure mode you're handling and what the a
      ASCII art, a Mermaid diagram (https://mermaid.js.org/syntax/flowchart.html), or an embedded
      sketch are all fine. You'll share this diagram with an AI tool when asking it to implement
      the planning loop and each individual tool. -->
+```mermaid
+flowchart TD
+    A([User Query]) --> B[Planning Loop]
 
+    B --> C["search_listings(description, size, max_price)"]
+
+    C -- "results=[]" --> D["[ERROR] 'No listings found...'"]
+    D --> E([Return])
+
+    C -- "results=[item, ...]" --> F["Session: selected_item = results[0]"]
+
+    F --> G["suggest_outfit(selected_item, wardrobe)"]
+    G --> H["Session: outfit_suggestion = '...'"]
+
+    H --> I["create_fit_card(outfit_suggestion, selected_item)"]
+    I --> J["Session: fit_card = '...'"]
+
+    J --> K([Return session])
+```
 ---
 
 ## AI Tool Plan
