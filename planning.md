@@ -16,6 +16,8 @@ You must have at least 3 tools. The three required tools are listed — add any 
 
 **What it does:**
 <!-- Describe what this tool does in 1–2 sentences -->
+Searches the mock listings dataset and returns matching items. Must handle the case where no matches are found.
+search_listings searches against all available field: id, title, description, category, style_tags, size, condition, price, colors, brand, platform
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
@@ -25,6 +27,10 @@ You must have at least 3 tools. The three required tools are listed — add any 
 
 **What it returns:**
 <!-- Describe the return value — what fields does a result contain? -->
+Return the top three matching listings sorted by relevance.
+Return a list of dictionary. Each item in the list is clothing item. Each dictionary include the item unique id and a score.
+
+
 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if no listings match? -->
@@ -35,6 +41,7 @@ You must have at least 3 tools. The three required tools are listed — add any 
 
 **What it does:**
 <!-- Describe what this tool does in 1–2 sentences -->
+Given a specific item and the user's current wardrobe, suggests one or more complete outfit combinations. Must handle an empty or minimal wardrobe.
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
@@ -53,6 +60,7 @@ You must have at least 3 tools. The three required tools are listed — add any 
 
 **What it does:**
 <!-- Describe what this tool does in 1–2 sentences -->
+Generates a short, shareable description of a complete outfit — the kind of thing someone would caption an Instagram post with. Must produce something different each time for different inputs.
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
@@ -138,12 +146,32 @@ Write out what a full user interaction looks like from start to finish — tool 
 
 **Step 1:**
 <!-- What does the agent do first? Which tool is called? With what input? -->
+Search listing for vintage graphic tee under $30.
+Returns 3 matching listings sorted by relevance. FitFindr picks the top result: "Faded Band Tee — $22, Depop, Good condition."
 
 **Step 2:**
 <!-- What happens next? What was returned from step 1? What tool is called now? -->
+If search listing returned results, then it take that result and the items in the user wardrobe and pass it to suggest_outfit().
+returns: "Pair this with your wide-leg jeans and platform Docs for a classic 90s grunge look. Roll the sleeves once and tuck the front corner slightly for shape."
 
 **Step 3:**
 <!-- Continue until the full interaction is complete -->
+The suggestion and the new thrifted item are then passed into create_fit_card() to generate a social media caption.
+returns: "thrifted this faded band tee off depop for $22 and honestly it was made for my wide-legs 🖤 full look in my stories"
 
 **Final output to user:**
 <!-- What does the user actually see at the end? -->
+
+User: "I'm looking for a vintage graphic tee under $30. I mostly wear baggy jeans and chunky sneakers. What's out there and how would I style it?"
+
+System:
+Searching listing for vintage graphic tee under $30.
+
+I found 3 matching listings [sorted by relevance]. 
+The top result is: "Faded Band Tee — $22, Depop, Good condition."
+
+Looking through your wardrobem you can pair this with your wide-leg jeans and platform Docs for a classic 90s grunge look. Roll the sleeves once and tuck the front corner slightly for shape.
+
+A social media caption might look like: "thrifted this faded band tee off depop for $22 and honestly it was made for my wide-legs 🖤 full look in my stories"
+
+
