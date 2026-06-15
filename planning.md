@@ -21,19 +21,54 @@ search_listings searches against all available field: id, title, description, ca
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `description` (str): ...
-- `size` (str): ...
-- `max_price` (float): ...
+- `description` (str): a visual description of the clothing item that user want
+- `size` (str): the size that the user requested. If no size is asked then prompt the user
+- `max_price` (float): max price that the user requested. If no price is requested then ask the user. Can be fill in with an None to indicate no price limit.
 
 **What it returns:**
 <!-- Describe the return value — what fields does a result contain? -->
 Return the top three matching listings sorted by relevance.
-Return a list of dictionary. Each item in the list is clothing item. Each dictionary include the item unique id and a score.
+Return a list of dictionary. Each item in the list is clothing item in the listing with the following fields: id, title, description, category, style_tags (list), size, condition, price (float), colors (list), brand, platform.
+
+Best match is put first
+
+Sample return:
+```python
+[
+    {
+        "id": "lst_023",
+        "title": "Crochet Halter Top — Cream",
+        "description": "Handmade-looking crochet halter. Ties at the neck and back. Perfect for layering over a tank in summer.",
+        "category": "tops",
+        "style_tags": ["cottagecore", "boho", "crochet", "summer"],
+        "size": "S/M",
+        "condition": "excellent",
+        "price": 22.00,
+        "colors": ["cream", "off-white"],
+        "brand": null,
+        "platform": "depop"
+    },
+    {
+        "id": "lst_030",
+        "title": "Vintage Knit Vest — Argyle Brown/Cream",
+        "description": "Classic argyle knit vest in brown and cream. Fits medium. V-neck. Ideal for the dark academia or preppy vintage aesthetic.",
+        "category": "tops",
+        "style_tags": ["vintage", "preppy", "knitwear", "dark academia", "earth tones"],
+        "size": "M",
+        "condition": "good",
+        "price": 25.00,
+        "colors": ["brown", "cream", "tan"],
+        "brand": null,
+        "platform": "thredUp"
+    }
+]
+```
 
 
 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if no listings match? -->
+It should return an empty list. The agent should then report to the user that no matching item can be found in the listing and recommend that user to find a different item.
 
 ---
 
@@ -45,14 +80,22 @@ Given a specific item and the user's current wardrobe, suggests one or more comp
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `new_item` (dict): ...
-- `wardrobe` (dict): ...
+- `new_item` (dict): the item listing returned by search_listing 
+- `wardrobe` (dict): the current user wardrobe following the wardrobe_schema.json
 
 **What it returns:**
-<!-- Describe the return value -->
+Returns a non-empty string with 1–2 complete outfit suggestions written in natural language.
+
+If the wardrobe is not empty, the suggestions reference specific pieces the user already owns by name (e.g., "pair with your wide-leg jeans and platform Docs").
+
+```python
+str  # e.g. "Pair this with your wide-leg jeans and platform Docs for a 90s grunge look."
+```
+
 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if the wardrobe is empty or no outfit can be suggested? -->
+If the wardrobe is empty, the response gives general styling advice instead — what types of pieces pair well and what vibe the item suits.
 
 ---
 
@@ -64,13 +107,19 @@ Generates a short, shareable description of a complete outfit — the kind of th
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `outfit` (...): ...
+- `outfit` (str): the complete outfit suggestion string returned by `suggest_outfit()`.
+- `new_item` (dict): the listing dict for the thrifted item (used to pull in the item name, price, and platform for the caption).
 
 **What it returns:**
-<!-- Describe the return value -->
+Returns a 2–4 sentence string styled as a casual Instagram/TikTok OOTD caption. The caption mentions the item name, price, and platform naturally (once each), captures the outfit vibe in specific terms, and feels authentic rather than like a product description.
+
+```python
+str  # e.g. "thrifted this faded band tee off depop for $22 and it was made for my wide-legs 🖤 full look in my stories"
+```
 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if the outfit data is incomplete? -->
+If `outfit` is empty or whitespace-only, the tool returns a descriptive error string (does not raise an exception). The agent surfaces that message to the user and prompts them to first run `suggest_outfit` to generate an outfit before requesting a fit card.
 
 ---
 
@@ -84,6 +133,7 @@ Generates a short, shareable description of a complete outfit — the kind of th
 
 **How does your agent decide which tool to call next?**
 <!-- Describe the logic your planning loop uses. What does it look at? What conditions change its behavior? How does it know when it's done? -->
+The planning loop runs tools in a fixed sequence: parse → search → outfit → fit card. It decides what to do next by checking the previous step's output in the session dict. After search_listings, it checks whether session["search_results"] is empty — if so, it sets an error and returns without calling the remaining tools. After suggest_outfit, it checks whether session["outfit_suggestion"] is a non-empty string before calling create_fit_card. The loop never backtracks or repeats a tool. It knows it is done when either an error gate fires (early return) or create_fit_card completes and session["fit_card"] is set.
 
 ---
 
@@ -91,6 +141,7 @@ Generates a short, shareable description of a complete outfit — the kind of th
 
 **How does information from one tool get passed to the next?**
 <!-- Describe how your agent stores and accesses state within a session. What data is tracked? How is it passed between tool calls? -->
+All state lives in a single session dict initialized by _new_session() at the start of each run_agent() call. Each tool writes its output to a dedicated field (search_results, selected_item, outfit_suggestion, fit_card). The next tool reads from the previous field — no state is passed as function arguments across steps, it all flows through the dict. If a step fails, session["error"] is set and the loop returns early; downstream fields stay None. The dict is returned at the end so any field can be inspected by the caller
 
 ---
 
