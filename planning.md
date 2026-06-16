@@ -1,12 +1,5 @@
 # FitFindr — planning.md
 
-> Complete this document before writing any implementation code.
-> Your spec and agent diagram are what you'll use to direct AI tools (Claude, Copilot, etc.) to generate your implementation — the more specific they are, the more useful the generated code will be.
-> Your planning.md will be reviewed as part of your submission.
-> Update it before starting any stretch features.
-
----
-
 ## Tools
 
 List every tool your agent will use. For each tool, fill in all four fields.
@@ -21,9 +14,9 @@ search_listings searches against all available field: id, title, description, ca
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `description` (str): a visual description of the clothing item that user want
-- `size` (str): the size that the user requested. If no size is asked then prompt the user
-- `max_price` (float): max price that the user requested. If no price is requested then ask the user. Can be fill in with an None to indicate no price limit.
+- `description` (str): a visual description of the clothing item that user want.
+- `size` (str): the size that the user requested. None if no specific size.
+- `max_price` (float): max price that the user requested. None if no price limit.
 
 **What it returns:**
 <!-- Describe the return value — what fields does a result contain? -->
@@ -93,8 +86,8 @@ Given a specific item and the user's current wardrobe, suggests one or more comp
 
 **Input parameters:**
 <!-- List each parameter, its type, and what it represents -->
-- `new_item` (dict): the item listing returned by search_listing 
-- `wardrobe` (dict): the current user wardrobe following the wardrobe_schema.json
+- `new_item` (dict): the item listing returned by search_listing.
+- `wardrobe` (dict): the current user wardrobe following the wardrobe_schema.json.
 
 **What it returns:**
 Returns a non-empty string with 1–2 complete outfit suggestions written in natural language.
@@ -133,13 +126,13 @@ str  # e.g. "thrifted this faded band tee off depop for $22 and it was made for 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if the outfit data is incomplete? -->
 If `outfit` is empty or whitespace-only, the tool returns a descriptive error string (does not raise an exception). The agent surfaces that message to the user and prompts them to first run `suggest_outfit` to generate an outfit before requesting a fit card.
-
+<!-- 
 ---
 
 ### Additional Tools (if any)
 
-<!-- Copy the block above for any tools beyond the required three -->
-
+Copy the block above for any tools beyond the required three
+-->
 ---
 
 ## Planning Loop
@@ -165,7 +158,7 @@ For each tool, describe the specific failure mode you're handling and what the a
 | Tool | Failure mode | Agent response |
 |------|-------------|----------------|
 | search_listings | No results match the query | Session exit early, agent response that no listing matches query |
-| suggest_outfit | Wardrobe is empty | Session exit early, agent respond that the wardrobe is empty and ask the user to add more item to their wardrobe |
+| suggest_outfit | Wardrobe is empty | Give general styling advice |
 | create_fit_card | Outfit input is missing or incomplete | The agent surfaces that message to the user and prompts them to first run `suggest_outfit` to generate an outfit before requesting a fit card. |
 
 ---
@@ -182,25 +175,29 @@ For each tool, describe the specific failure mode you're handling and what the a
      the planning loop and each individual tool. -->
 ```mermaid
 flowchart TD
-    A([User Query]) --> B[Planning Loop]
+    A([User Query]) --> P["_parse_query()\nextract description · size · max_price"]
 
-    B --> C["search_listings(description, size, max_price)"]
+    P --> C["search_listings(description, size, max_price)"]
 
-    C -- "results=[]" --> D["[ERROR] 'No listings found...'"]
-    D --> E([Return])
+    C -- "results = []" --> D["session[error] = 'No listings found…'"]
+    D --> Z([Return])
 
-    C -- "results=[item, ...]" --> F["Session: selected_item = results[0]"]
-
+    C -- "results found" --> F["session[selected_item] = results[0]"]
     F --> G["suggest_outfit(selected_item, wardrobe)"]
-    G -- "Wardrobe is empty or no matching item" --> L["Gives general styling advice instead — what types of pieces pair well and what vibe the item suits."]
+
+    G -- "wardrobe empty" --> L["General styling advice: no specific pieces referenced"]
+    G -- "wardrobe has items" --> H["session[outfit_suggestion] = result"]
     L --> H
-    G --> H["Session: outfit_suggestion = '...'"]
 
-    H --> I["create_fit_card(outfit_suggestion, selected_item)"]
-    H -- "Outfit input is missing or incomplete" -->M["The agent surfaces that message to the user and prompts them to first run suggest_outfit to generate an outfit before requesting a fit card."]
-    I --> J["Session: fit_card = '...'"]
+    H -- "result empty" --> ERR["session[error] = 'No outfit generated'"]
+    ERR --> Z
 
-    J --> K([Return session])
+    H -- "result non-empty" --> I["create_fit_card(outfit_suggestion, selected_item)"]
+    I -- "outfit blank/missing" --> M["Error string returned: run suggest_outfit first"]
+    I -- "outfit valid" --> J["session[fit_card] = caption"]
+
+    M --> K([Return session])
+    J --> K
 ```
 ---
 
@@ -219,8 +216,8 @@ flowchart TD
 
 **Milestone 3 — Individual tool implementations:**
 I will give Claude my Tool 1 spec, search_listing() and ask it to implement it using load listings() from data_loader.py. I will then ask it to test against three different queries before accepting it as plan. The test queries will be a part of a pytest module.
-For Tool 2, I will give Claude my Tool 2 spec and ask it to implement it utilizing load_wardrobe_schema(). I will also ask it to write three different test against an example wardrobe and a matching fit, an example wardrobe without a matching fit, and an empty wardrobe.
-For Tool 3, I will give Cluade my Tool 3 spec and ask it to implement create_fit_card(). Claude will also write three tests, one testing with a complete suggestion, one with an incomplete suggestion, and one with the input missing/empty.
+For Tool 2, I will give Claude my Tool 2 spec and ask it to implement it. I will also ask it to write three different test against an example wardrobe and a matching fit, an example wardrobe without a matching fit, and an empty wardrobe.
+For Tool 3, I will give Claude my Tool 3 spec and ask it to implement create_fit_card(). Claude will also write three tests, one testing with a complete suggestion, one with an incomplete suggestion, and one with the input missing/empty.
 
 **Milestone 4 — Planning loop and state management:**
 I will give my Claude my Planning Loop and State Management spec, I will also give the AI the architecture diagram and ask it to implement it. I will also use the plan to verify that what the AI give me conform to the described spec.
