@@ -128,8 +128,50 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
 
     Before writing code, fill in the Tool 2 section of planning.md.
     """
-    # Replace this with your implementation
-    return ""
+    client = _get_groq_client()
+    items = wardrobe.get("items", [])
+
+    item_summary = (
+        f"Item: {new_item.get('title', 'Unknown item')}\n"
+        f"Category: {new_item.get('category', '')}\n"
+        f"Colors: {', '.join(new_item.get('colors', []))}\n"
+        f"Style tags: {', '.join(new_item.get('style_tags', []))}\n"
+        f"Condition: {new_item.get('condition', '')}\n"
+        f"Description: {new_item.get('description', '')}"
+    )
+
+    if not items:
+        prompt = (
+            f"A user is considering buying this thrifted item:\n{item_summary}\n\n"
+            "Their wardrobe is empty. Give general styling advice: what types of pieces "
+            "pair well with this item, what vibe or aesthetic it suits, and how they could "
+            "build outfits around it. Keep it conversational and specific to the item's style."
+        )
+    else:
+        wardrobe_lines = []
+        for piece in items:
+            notes = f" ({piece['notes']})" if piece.get("notes") else ""
+            wardrobe_lines.append(
+                f"- {piece['name']} [{piece['category']}], "
+                f"colors: {', '.join(piece.get('colors', []))}, "
+                f"tags: {', '.join(piece.get('style_tags', []))}{notes}"
+            )
+        wardrobe_text = "\n".join(wardrobe_lines)
+
+        prompt = (
+            f"A user is considering buying this thrifted item:\n{item_summary}\n\n"
+            f"Their current wardrobe includes:\n{wardrobe_text}\n\n"
+            "Suggest 1–2 complete outfit combinations using the new item paired with "
+            "specific pieces from their wardrobe. Reference items by name. Keep it "
+            "casual and specific — mention the vibe each outfit achieves."
+        )
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7,
+    )
+    return response.choices[0].message.content or ""
 
 
 # ── Tool 3: create_fit_card ───────────────────────────────────────────────────
@@ -161,5 +203,35 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
 
     Before writing code, fill in the Tool 3 section of planning.md.
     """
-    # Replace this with your implementation
-    return ""
+    if not outfit or not outfit.strip():
+        return (
+            "Error: no outfit suggestion provided. Run suggest_outfit() first "
+            "to generate outfit ideas before requesting a fit card."
+        )
+
+    client = _get_groq_client()
+
+    item_name = new_item.get("title", "thrifted find")
+    price = new_item.get("price", "")
+    platform = new_item.get("platform", "")
+
+    price_str = f"${price:.2f}" if isinstance(price, (int, float)) else str(price)
+
+    prompt = (
+        f"Write a 2–4 sentence Instagram/TikTok OOTD caption for this outfit:\n\n"
+        f"Outfit: {outfit}\n\n"
+        f"The thrifted item is: {item_name}, bought on {platform} for {price_str}.\n\n"
+        "Style rules:\n"
+        "- Sound like a real person posting on social media, not a product description\n"
+        "- Mention the item name, price, and platform once each, naturally woven in\n"
+        "- Capture the specific vibe of the outfit in concrete terms\n"
+        "- Keep it casual and authentic — no hashtag blocks, no emojis required\n"
+        "- 2–4 sentences only"
+    )
+
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=1.0,
+    )
+    return response.choices[0].message.content or ""
