@@ -169,7 +169,7 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
-        temperature=0.7,
+        temperature=1.0,
     )
     return response.choices[0].message.content or ""
 
@@ -185,7 +185,7 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
         new_item: The listing dict for the thrifted item.
 
     Returns:
-        A 2–4 sentence string usable as an Instagram/TikTok caption.
+        A 2-4 sentence string usable as an Instagram/TikTok caption.
         If outfit is empty or missing, return a descriptive error message
         string — do NOT raise an exception.
 
@@ -218,7 +218,7 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
     price_str = f"${price:.2f}" if isinstance(price, (int, float)) else str(price)
 
     prompt = (
-        f"Write a 2–4 sentence Instagram/TikTok OOTD caption for this outfit:\n\n"
+        f"Write a 2-4 sentence Instagram/TikTok OOTD caption for this outfit:\n\n"
         f"Outfit: {outfit}\n\n"
         f"The thrifted item is: {item_name}, bought on {platform} for {price_str}.\n\n"
         "Style rules:\n"
@@ -226,12 +226,15 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
         "- Mention the item name, price, and platform once each, naturally woven in\n"
         "- Capture the specific vibe of the outfit in concrete terms\n"
         "- Keep it casual and authentic — no hashtag blocks, no emojis required\n"
-        "- 2–4 sentences only"
+        "- 2-4 sentences only\n"
+        "- Keep the caption to less than 120 characters.\n\n"
+        "Example of a good caption:\n"
+        "thrifted this faded band tee off depop for $22 and honestly it was made for my wide-legs 🖤 full look in my stories"
     )
 
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         messages=[{"role": "user", "content": prompt}],
-        temperature=1.0,
+        temperature=1.2,
     )
     return response.choices[0].message.content or ""
