@@ -151,6 +151,12 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 
     # Step 5: suggest outfit
     session["outfit_suggestion"] = suggest_outfit(session["selected_item"], wardrobe)
+    if not session["outfit_suggestion"]:
+        session["error"] = (
+            "Error: no outfit suggestion provided. Run suggest_outfit() first "
+            "to generate outfit ideas before requesting a fit card."
+        )
+        return session
 
     # Step 6: create fit card
     session["fit_card"] = create_fit_card(session["outfit_suggestion"], session["selected_item"])
@@ -181,3 +187,4 @@ if __name__ == "__main__":
         wardrobe=get_example_wardrobe(),
     )
     print(f"Error message: {session2['error']}")
+    print(session2["fit_card"])

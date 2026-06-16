@@ -192,11 +192,12 @@ flowchart TD
     C -- "results=[item, ...]" --> F["Session: selected_item = results[0]"]
 
     F --> G["suggest_outfit(selected_item, wardrobe)"]
-    G -- "Wardrobe is empty or no matching item" --> L["Session exit early, agent respond that the wardrobe is empty or that there is no matching item and ask the user to add more item to their wardrobe"]
+    G -- "Wardrobe is empty or no matching item" --> L["Gives general styling advice instead — what types of pieces pair well and what vibe the item suits."]
+    L --> H
     G --> H["Session: outfit_suggestion = '...'"]
 
     H --> I["create_fit_card(outfit_suggestion, selected_item)"]
-    H -- "Outfit input is missing or incomplete" -->M["The agent surfaces that message to the user and prompts them to first run `suggest_outfit` to generate an outfit before requesting a fit card."]
+    H -- "Outfit input is missing or incomplete" -->M["The agent surfaces that message to the user and prompts them to first run suggest_outfit to generate an outfit before requesting a fit card."]
     I --> J["Session: fit_card = '...'"]
 
     J --> K([Return session])
