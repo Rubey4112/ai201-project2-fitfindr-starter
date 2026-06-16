@@ -27,7 +27,7 @@ search_listings searches against all available field: id, title, description, ca
 
 **What it returns:**
 <!-- Describe the return value — what fields does a result contain? -->
-Return the top three matching listings sorted by relevance.
+Return the matching listings sorted by relevance.
 Return a list of dictionary. Each item in the list is clothing item in the listing with the following fields: id, title, description, category, style_tags (list), size, condition, price (float), colors (list), brand, platform.
 
 Best match is put first
@@ -217,7 +217,7 @@ flowchart TD
      before trusting it" is a plan. -->
 
 **Milestone 3 — Individual tool implementations:**
-I will give Claude my Tool 1 spec, search_listing() and ask it to implement it using load listings() from data_loader.py. I will then ask it to test against three different queries before excepting it as plan. The test queries will be a part of a pytest module.
+I will give Claude my Tool 1 spec, search_listing() and ask it to implement it using load listings() from data_loader.py. I will then ask it to test against three different queries before accepting it as plan. The test queries will be a part of a pytest module.
 For Tool 2, I will give Claude my Tool 2 spec and ask it to implement it utilizing load_wardrobe_schema(). I will also ask it to write three different test against an example wardrobe and a matching fit, an example wardrobe without a matching fit, and an empty wardrobe.
 For Tool 3, I will give Cluade my Tool 3 spec and ask it to implement create_fit_card(). Claude will also write three tests, one testing with a complete suggestion, one with an incomplete suggestion, and one with the input missing/empty.
 
