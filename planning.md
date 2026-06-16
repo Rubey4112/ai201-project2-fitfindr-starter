@@ -217,8 +217,12 @@ flowchart TD
      before trusting it" is a plan. -->
 
 **Milestone 3 — Individual tool implementations:**
+I will give Claude my Tool 1 spec, search_listing() and ask it to implement it using load listings() from data_loader.py. I will then ask it to test against three different queries before excepting it as plan. The test queries will be a part of a pytest module.
+For Tool 2, I will give Claude my Tool 2 spec and ask it to implement it utilizing load_wardrobe_schema(). I will also ask it to write three different test against an example wardrobe and a matching fit, an example wardrobe without a matching fit, and an empty wardrobe.
+For Tool 3, I will give Cluade my Tool 3 spec and ask it to implement create_fit_card(). Claude will also write three tests, one testing with a complete suggestion, one with an incomplete suggestion, and one with the input missing/empty.
 
 **Milestone 4 — Planning loop and state management:**
+I will give my Claude my Planning Loop and State Management spec, I will also give the AI the architecture diagram and ask it to implement it. I will also use the plan to verify that what the AI give me conform to the described spec.
 
 ---
 
