@@ -87,7 +87,7 @@ create_fit_card(outfit: str, new_item: dict) -> str
 
 ## Planning Loop
 
-`run_agent(query, wardrobe)` in [agent.py](agent.py) runs the tools in a fixed four-step sequence. The loop decides what to do next by inspecting the previous step's output in the session dict — it never backtracks or re-runs a tool.
+`run_agent(query, wardrobe)` in [agent.py](agent.py) runs the tools in a fixed sequence. The loop decides what to do next by inspecting the previous step's output in the session dict. The search step includes up to three automatic retries with progressively looser constraints before erroring out.
 
 ```mermaid
 flowchart TD
@@ -95,10 +95,25 @@ flowchart TD
 
     P --> C["search_listings(description, size, max_price)"]
 
-    C -- "results = []" --> D["session[error] = 'No listings found…'"]
+    C -- "results found" --> F["session[selected_item] = results[0]"]
+
+    C -- "results = []" --> R1{"max_price set?"}
+    R1 -- "yes" --> C1["search_listings(description, size, max_price+15)\nsearch_notice: 'raised budget by $15'"]
+    R1 -- "no" --> R3{"size set?"}
+
+    C1 -- "results found" --> F
+    C1 -- "results = []" --> R2["search_listings(description, size, max_price=None)\nsearch_notice: 'removed price limit'"]
+
+    R2 -- "results found" --> F
+    R2 -- "results = []" --> R3
+
+    R3 -- "yes" --> C3["search_listings(description, size=None, max_price=None)\nsearch_notice: 'removed size filter'"]
+    R3 -- "no" --> D["session[error] = 'No listings found…'"]
+
+    C3 -- "results found" --> F
+    C3 -- "results = []" --> D
     D --> Z([Return])
 
-    C -- "results found" --> F["session[selected_item] = results[0]"]
     F --> G["suggest_outfit(selected_item, wardrobe)"]
 
     G -- "wardrobe empty" --> L["General styling advice: no specific pieces referenced"]
@@ -134,10 +149,11 @@ session = {
     "outfit_suggestion": str,   # output of suggest_outfit; input to create_fit_card
     "fit_card":          str,   # final caption output
     "error":             str,   # set on early exit; None on success
+    "search_notice":     str,   # set when search constraints were relaxed; None otherwise
 }
 ```
 
-If a step fails, `session["error"]` is set and `run_agent` returns immediately. All downstream fields remain `None`. The caller checks `session["error"]` first — `app.py` surfaces it in the listing panel and leaves the other two panels empty.
+If a step fails, `session["error"]` is set and `run_agent` returns immediately. All downstream fields remain `None`. The caller checks `session["error"]` first — `app.py` surfaces it in the listing panel and leaves the other two panels empty. When the search retries succeed with looser constraints, `session["search_notice"]` is prepended to the listing panel so the user knows what was adjusted.
 
 ---
 
@@ -147,18 +163,24 @@ If a step fails, `session["error"]` is set and `run_agent` returns immediately. 
 
 **Failure mode:** The keyword scorer produces a score of 0 for every listing, or all listings are filtered out by price/size constraints. The function returns `[]`.
 
-**Agent response:** `run_agent` checks `if not session["search_results"]` and sets:
+**Agent response:** Before giving up, `run_agent` retries up to three times with progressively looser constraints:
+
+1. **Retry 1 — raise budget by $15:** If `max_price` was set, retry with `max_price + 15`. On success, sets `session["search_notice"]` (e.g. `"No exact matches — raised the budget by $15 to $20 to find results."`).
+2. **Retry 2 — drop price limit:** If still empty and `max_price` was set, retry with no price filter. On success, appends `"removed the price limit"` to the notice.
+3. **Retry 3 — drop size filter:** If still empty and `size` was set, retry with no size filter. On success, appends `"removed the size filter"` to the notice.
+
+If all retries are exhausted without results, the loop sets:
 ```
-session["error"] = "No listings found for '...'. Try different keywords, a higher budget, or a different size."
+session["error"] = "No listings found for '...' even after removing price and size filters. Try a different set of keywords."
 ```
-The loop returns immediately. `outfit_suggestion` and `fit_card` stay `None`.
+`outfit_suggestion` and `fit_card` stay `None`.
 
 **Concrete example from testing:**
 ```python
 results = search_listings("xyzzy nonsense garment", max_price=0.01)
 assert results == []  # test_no_match_returns_empty_list — passes
 ```
-Running `run_agent(query="designer ballgown size XXS under $5", wardrobe=...)` in the CLI test block exercises the same path end-to-end and prints `"Error message: No listings found for..."`.
+Running `run_agent(query="designer ballgown size XXS under $5", wardrobe=...)` in the CLI test block exercises the retry path end-to-end.
 
 ![search_listings no-results error](img/search_no_result.png)
 
