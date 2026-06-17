@@ -13,6 +13,7 @@ Tools:
 """
 
 import os
+import statistics
 
 from dotenv import load_dotenv
 from groq import Groq
@@ -238,3 +239,51 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
         temperature=1.2,
     )
     return response.choices[0].message.content or ""
+
+
+# ── Tool 4: compare_price ─────────────────────────────────────────────────────
+
+def compare_price(item: dict) -> str:
+    """
+    Estimate whether a listing's price is fair based on comparable items
+    in the dataset (same category + at least one shared style tag).
+
+    Args:
+        item: A listing dict as returned by search_listings().
+
+    Returns:
+        A plain-English verdict string with the label, item price, average,
+        median, comparable count, and % difference from average.
+        Returns "Not enough comparable listings to assess pricing." if fewer
+        than 2 comparables are found — does NOT raise an exception.
+    """
+    all_listings = load_listings()
+    item_tags = set(item.get("style_tags") or [])
+
+    comparables = [
+        l for l in all_listings
+        if l["id"] != item["id"]
+        and l["category"] == item["category"]
+        and item_tags & set(l.get("style_tags") or [])
+    ]
+
+    if len(comparables) < 2:
+        return "Not enough comparable listings to assess pricing."
+
+    prices = [c["price"] for c in comparables]
+    avg = statistics.mean(prices)
+    median = statistics.median(prices)
+    pct_diff = ((item["price"] - avg) / avg) * 100
+
+    if pct_diff <= -20:
+        verdict = "Great deal"
+    elif pct_diff <= 5:
+        verdict = "Fair price"
+    else:
+        verdict = "Slightly above average"
+
+    return (
+        f"{verdict}: ${item['price']:.2f} vs. avg ${avg:.2f} / median ${median:.2f} "
+        f"across {len(comparables)} similar {item['category']} listings "
+        f"({pct_diff:+.0f}% vs. average)."
+    )

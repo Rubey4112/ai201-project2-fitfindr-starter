@@ -24,7 +24,7 @@ import os
 from dotenv import load_dotenv
 from groq import Groq
 
-from tools import search_listings, suggest_outfit, create_fit_card
+from tools import search_listings, suggest_outfit, create_fit_card, compare_price
 
 load_dotenv()
 
@@ -75,6 +75,7 @@ def _new_session(query: str, wardrobe: dict) -> dict:
         "search_results": [],        # list of matching listing dicts
         "selected_item": None,       # top result, passed into suggest_outfit
         "wardrobe": wardrobe,        # user's wardrobe dict
+        "price_verdict": None,       # string returned by compare_price
         "outfit_suggestion": None,   # string returned by suggest_outfit
         "fit_card": None,            # string returned by create_fit_card
         "error": None,               # set if the interaction ended early
@@ -177,6 +178,9 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 
     # Step 4: select top result
     session["selected_item"] = session["search_results"][0]
+
+    # Step 4b: price comparison (never blocks the loop)
+    session["price_verdict"] = compare_price(session["selected_item"])
 
     # Step 5: suggest outfit
     session["outfit_suggestion"] = suggest_outfit(session["selected_item"], wardrobe)
