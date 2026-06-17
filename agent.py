@@ -78,6 +78,7 @@ def _new_session(query: str, wardrobe: dict) -> dict:
         "outfit_suggestion": None,   # string returned by suggest_outfit
         "fit_card": None,            # string returned by create_fit_card
         "error": None,               # set if the interaction ended early
+        "search_notice": None,       # set when search constraints were relaxed
     }
 
 
@@ -134,15 +135,43 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     parsed = _parse_query(query)
     session["parsed"] = parsed
 
-    # Step 3: search
-    session["search_results"] = search_listings(
-        description=parsed.get("description") or query,
-        size=parsed.get("size"),
-        max_price=parsed.get("max_price"),
-    )
+    # Step 3: search with up to three retries on empty results
+    description = parsed.get("description") or query
+    size = parsed.get("size")
+    max_price = parsed.get("max_price")
+    notices = []
+
+    results = search_listings(description=description, size=size, max_price=max_price)
+
+    if not results and max_price is not None:
+        # Retry 1: raise budget by $15
+        results = search_listings(description=description, size=size, max_price=max_price + 15)
+        if results:
+            notices.append(f"raised the budget by $15 to ${max_price + 15:.0f}")
+            max_price = max_price + 15
+
+    if not results and max_price is not None:
+        # Retry 2: drop price limit entirely
+        results = search_listings(description=description, size=size, max_price=None)
+        if results:
+            notices.append("removed the price limit")
+            max_price = None
+
+    if not results and size is not None:
+        # Retry 3: drop size filter
+        results = search_listings(description=description, size=None, max_price=max_price)
+        if results:
+            notices.append("removed the size filter")
+
+    session["search_results"] = results
+
+    if notices:
+        session["search_notice"] = "No exact matches — " + ", ".join(notices) + " to find results."
+
     if not session["search_results"]:
         session["error"] = (
-            f"No listings found for '{query}'. Try different keywords, a higher budget, or a different size."
+            f"No listings found for '{query}' even after removing price and size filters. "
+            "Try a different set of keywords."
         )
         return session
 

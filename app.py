@@ -78,6 +78,9 @@ def handle_query(user_query: str, wardrobe_choice: str) -> tuple[str, str, str]:
         f"{item.get('description', '')}"
     )
 
+    if session.get("search_notice"):
+        listing_text = f"Note: {session['search_notice']}\n\n{listing_text}"
+
     return listing_text, session["outfit_suggestion"], session["fit_card"]
 
 
