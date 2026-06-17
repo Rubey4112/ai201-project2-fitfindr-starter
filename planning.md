@@ -74,7 +74,12 @@ Best match is put first
 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if no listings match? -->
-It should return an empty list. The agent should then report to the user that no matching item can be found in the listing and recommend that user to look for a different item.
+It returns an empty list. The agent runs up to three automatic retries with progressively looser constraints before giving up:
+
+1. **Retry 1 — raise price by $15:** If `max_price` was set, retry with `max_price + 15`. If results are found, continue normally and set `session["search_notice"]` to tell the user the budget ceiling was raised by $15.
+2. **Retry 2 — drop price limit:** If results are still empty and `max_price` was set, retry with no price filter (`max_price = None`). If results are found, continue normally and note in `session["search_notice"]` that the price limit was removed.
+3. **Retry 3 — drop size filter:** If results are still empty and `size` was set, retry with no size filter. If results are found, continue normally and note in `session["search_notice"]` that the size filter was also removed.
+4. If results are still empty after all retries, set `session["error"]` and exit early.
 
 ---
 
@@ -139,7 +144,7 @@ Copy the block above for any tools beyond the required three
 
 **How does your agent decide which tool to call next?**
 <!-- Describe the logic your planning loop uses. What does it look at? What conditions change its behavior? How does it know when it's done? -->
-The planning loop runs tools in a fixed sequence: parse → search → outfit → fit card. It decides what to do next by checking the previous step's output in the session dict. After search_listings, it checks whether session["search_results"] is empty — if so, it sets an error and returns without calling the remaining tools. After suggest_outfit, it checks whether session["outfit_suggestion"] is a non-empty string before calling create_fit_card. The loop never backtracks or repeats a tool. It knows it is done when either an error gate fires (early return) or create_fit_card completes and session["fit_card"] is set.
+The planning loop runs tools in a fixed sequence: parse → search (with up to three retries on empty) → outfit → fit card. After the initial `search_listings` call, if results are empty the loop tries progressively looser constraints: (1) raise `max_price` by $15, (2) drop the price limit entirely, (3) drop the size filter. Each retry that succeeds records what was relaxed in `session["search_notice"]` so the UI can inform the user. Only after all applicable retries are exhausted does the loop set `session["error"]` and return early. After `suggest_outfit`, the loop checks whether `session["outfit_suggestion"]` is a non-empty string before calling `create_fit_card`. Apart from the search retries, the loop never backtracks. It knows it is done when either an error gate fires (early return) or `create_fit_card` completes and `session["fit_card"]` is set.
 
 ---
 
@@ -147,7 +152,7 @@ The planning loop runs tools in a fixed sequence: parse → search → outfit �
 
 **How does information from one tool get passed to the next?**
 <!-- Describe how your agent stores and accesses state within a session. What data is tracked? How is it passed between tool calls? -->
-All state lives in a single session dict initialized by _new_session() at the start of each run_agent() call. Each tool writes its output to a dedicated field (search_results, selected_item, outfit_suggestion, fit_card). The next tool reads from the previous field — no state is passed as function arguments across steps, it all flows through the dict. If a step fails, session["error"] is set and the loop returns early; downstream fields stay None. The dict is returned at the end so any field can be inspected by the caller
+All state lives in a single session dict initialized by `_new_session()` at the start of each `run_agent()` call. Each tool writes its output to a dedicated field (`search_results`, `selected_item`, `outfit_suggestion`, `fit_card`). The next tool reads from the previous field — no state is passed as function arguments across steps, it all flows through the dict. The search step also tracks the effective constraints used (`effective_size`, `effective_max_price`) so retries can build on each previous attempt. If constraints were loosened, `session["search_notice"]` is set to describe what changed so the UI can surface it to the user. If a step fails permanently, `session["error"]` is set and the loop returns early; downstream fields stay None. The dict is returned at the end so any field can be inspected by the caller.
 
 ---
 
@@ -157,7 +162,7 @@ For each tool, describe the specific failure mode you're handling and what the a
 
 | Tool | Failure mode | Agent response |
 |------|-------------|----------------|
-| search_listings | No results match the query | Session exit early, agent response that no listing matches query |
+| search_listings | No results with original filters | Retry up to 3 times: (1) raise `max_price` by $15, (2) drop price limit, (3) drop size filter. Record each relaxed constraint in `session["search_notice"]`. If still empty after all retries, set `session["error"]` and exit early. |
 | suggest_outfit | Wardrobe is empty | Give general styling advice |
 | create_fit_card | Outfit input is missing or incomplete | The agent surfaces that message to the user and prompts them to first run `suggest_outfit` to generate an outfit before requesting a fit card. |
 
@@ -179,10 +184,25 @@ flowchart TD
 
     P --> C["search_listings(description, size, max_price)"]
 
-    C -- "results = []" --> D["session[error] = 'No listings found…'"]
+    C -- "results found" --> F["session[selected_item] = results[0]"]
+
+    C -- "results = []" --> R1{"max_price set?"}
+    R1 -- "yes" --> C1["search_listings(description, size, max_price+15)\nsearch_notice: 'raised budget by $15'"]
+    R1 -- "no" --> R3{"size set?"}
+
+    C1 -- "results found" --> F
+    C1 -- "results = []" --> R2["search_listings(description, size, max_price=None)\nsearch_notice: 'removed price limit'"]
+
+    R2 -- "results found" --> F
+    R2 -- "results = []" --> R3
+
+    R3 -- "yes" --> C3["search_listings(description, size=None, max_price=None)\nsearch_notice: 'removed size filter'"]
+    R3 -- "no" --> D["session[error] = 'No listings found…'"]
+
+    C3 -- "results found" --> F
+    C3 -- "results = []" --> D
     D --> Z([Return])
 
-    C -- "results found" --> F["session[selected_item] = results[0]"]
     F --> G["suggest_outfit(selected_item, wardrobe)"]
 
     G -- "wardrobe empty" --> L["General styling advice: no specific pieces referenced"]
