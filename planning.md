@@ -131,20 +131,39 @@ str  # e.g. "thrifted this faded band tee off depop for $22 and it was made for 
 **What happens if it fails or returns nothing:**
 <!-- What should the agent do if the outfit data is incomplete? -->
 If `outfit` is empty or whitespace-only, the tool returns a descriptive error string (does not raise an exception). The agent surfaces that message to the user and prompts them to first run `suggest_outfit` to generate an outfit before requesting a fit card.
-<!-- 
+
 ---
 
-### Additional Tools (if any)
+### Tool 4: compare_price
 
-Copy the block above for any tools beyond the required three
--->
+**What it does:**
+Given a listing item, finds comparable listings in the dataset (same category, at least one shared style tag) and returns a plain-English verdict on whether the price is fair, above average, or a great deal — using rule-based thresholds against the average price of comparables. No LLM call; purely arithmetic.
+
+**Input parameters:**
+- `item` (dict): a listing dict (the item the user is considering buying), as returned by `search_listings`.
+
+**What it returns:**
+Returns a non-empty string with a verdict label, the item's price, the average and median price of comparable listings, the percentage difference from average, and the count of comparables used.
+
+```python
+str  # e.g. "Great deal: $22.00 vs. avg $34.50 / median $33.00 across 8 similar tops listings (-36% vs. average)."
+```
+
+Verdict thresholds (based on % difference from average):
+- `<= -20%` → "Great deal"
+- `<= +5%`  → "Fair price"
+- `> +5%`   → "Slightly above average"
+
+**What happens if it fails or returns nothing:**
+If fewer than 2 comparable listings are found (same category + at least one shared style tag), the tool returns the string `"Not enough comparable listings to assess pricing."` — does not raise an exception. The agent surfaces this string as-is to the user.
+
 ---
 
 ## Planning Loop
 
 **How does your agent decide which tool to call next?**
 <!-- Describe the logic your planning loop uses. What does it look at? What conditions change its behavior? How does it know when it's done? -->
-The planning loop runs tools in a fixed sequence: parse → search (with up to three retries on empty) → outfit → fit card. After the initial `search_listings` call, if results are empty the loop tries progressively looser constraints: (1) raise `max_price` by $15, (2) drop the price limit entirely, (3) drop the size filter. Each retry that succeeds records what was relaxed in `session["search_notice"]` so the UI can inform the user. Only after all applicable retries are exhausted does the loop set `session["error"]` and return early. After `suggest_outfit`, the loop checks whether `session["outfit_suggestion"]` is a non-empty string before calling `create_fit_card`. Apart from the search retries, the loop never backtracks. It knows it is done when either an error gate fires (early return) or `create_fit_card` completes and `session["fit_card"]` is set.
+The planning loop runs tools in a fixed sequence: parse → search (with up to three retries on empty) → price comparison → outfit → fit card. After the initial `search_listings` call, if results are empty the loop tries progressively looser constraints: (1) raise `max_price` by $15, (2) drop the price limit entirely, (3) drop the size filter. Each retry that succeeds records what was relaxed in `session["search_notice"]` so the UI can inform the user. Only after all applicable retries are exhausted does the loop set `session["error"]` and return early. Once a `selected_item` is chosen, `compare_price` is called immediately — its result is stored in `session["price_verdict"]` and is always surfaced regardless of what follows (it never blocks the loop). After `suggest_outfit`, the loop checks whether `session["outfit_suggestion"]` is a non-empty string before calling `create_fit_card`. Apart from the search retries, the loop never backtracks. It knows it is done when either an error gate fires (early return) or `create_fit_card` completes and `session["fit_card"]` is set.
 
 ---
 
@@ -152,7 +171,7 @@ The planning loop runs tools in a fixed sequence: parse → search (with up to t
 
 **How does information from one tool get passed to the next?**
 <!-- Describe how your agent stores and accesses state within a session. What data is tracked? How is it passed between tool calls? -->
-All state lives in a single session dict initialized by `_new_session()` at the start of each `run_agent()` call. Each tool writes its output to a dedicated field (`search_results`, `selected_item`, `outfit_suggestion`, `fit_card`). The next tool reads from the previous field — no state is passed as function arguments across steps, it all flows through the dict. The search step also tracks the effective constraints used (`effective_size`, `effective_max_price`) so retries can build on each previous attempt. If constraints were loosened, `session["search_notice"]` is set to describe what changed so the UI can surface it to the user. If a step fails permanently, `session["error"]` is set and the loop returns early; downstream fields stay None. The dict is returned at the end so any field can be inspected by the caller.
+All state lives in a single session dict initialized by `_new_session()` at the start of each `run_agent()` call. Each tool writes its output to a dedicated field (`search_results`, `selected_item`, `price_verdict`, `outfit_suggestion`, `fit_card`). The next tool reads from the previous field — no state is passed as function arguments across steps, it all flows through the dict. The search step also tracks the effective constraints used (`effective_size`, `effective_max_price`) so retries can build on each previous attempt. If constraints were loosened, `session["search_notice"]` is set to describe what changed so the UI can surface it to the user. `price_verdict` is set immediately after `selected_item` and is never None after that point — `compare_price` always returns a string (either a verdict or the "not enough comparables" fallback). If a step fails permanently, `session["error"]` is set and the loop returns early; downstream fields stay None. The dict is returned at the end so any field can be inspected by the caller.
 
 ---
 
@@ -163,6 +182,7 @@ For each tool, describe the specific failure mode you're handling and what the a
 | Tool | Failure mode | Agent response |
 |------|-------------|----------------|
 | search_listings | No results with original filters | Retry up to 3 times: (1) raise `max_price` by $15, (2) drop price limit, (3) drop size filter. Record each relaxed constraint in `session["search_notice"]`. If still empty after all retries, set `session["error"]` and exit early. |
+| compare_price | Fewer than 2 comparable listings found | Return the string `"Not enough comparable listings to assess pricing."` and store it in `session["price_verdict"]`. Does not block the loop — outfit and fit card steps proceed normally. |
 | suggest_outfit | Wardrobe is empty | Give general styling advice |
 | create_fit_card | Outfit input is missing or incomplete | The agent surfaces that message to the user and prompts them to first run `suggest_outfit` to generate an outfit before requesting a fit card. |
 
@@ -203,7 +223,11 @@ flowchart TD
     C3 -- "results = []" --> D
     D --> Z([Return])
 
-    F --> G["suggest_outfit(selected_item, wardrobe)"]
+    F --> CP["compare_price(selected_item)"]
+    CP -- "≥2 comparables" --> PV["session[price_verdict] = verdict string"]
+    CP -- "<2 comparables" --> PV2["session[price_verdict] = 'Not enough comparables…'"]
+    PV --> G["suggest_outfit(selected_item, wardrobe)"]
+    PV2 --> G
 
     G -- "wardrobe empty" --> L["General styling advice: no specific pieces referenced"]
     G -- "wardrobe has items" --> H["session[outfit_suggestion] = result"]
