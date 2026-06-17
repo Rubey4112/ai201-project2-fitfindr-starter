@@ -1,6 +1,6 @@
 # FitFindr
 
-An AI-powered secondhand styling agent. Describe what you're looking for, and FitFindr searches the listings, suggests outfits using your wardrobe, and generates a shareable fit card — all in one shot.
+An AI-powered secondhand styling agent. Describe what you're looking for, and FitFindr searches the listings, checks whether the price is fair, suggests outfits using your wardrobe, and generates a shareable fit card — all in one shot.
 
 ## Quick Start
 
@@ -85,9 +85,39 @@ create_fit_card(outfit: str, new_item: dict) -> str
 
 ---
 
+### `compare_price`
+
+**Purpose:** Estimates whether the selected listing's price is fair by comparing it against similar items in `data/listings.json` (same category + at least one shared style tag). Pure Python — no LLM call.
+
+**Signature:**
+```python
+compare_price(item: dict) -> str
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `item` | `dict` | A listing dict returned by `search_listings` (the item being considered) |
+
+**Returns:** `str` — a plain-English verdict containing the label, item price, average and median price of comparables, comparable count, and % difference from average. Returns `"Not enough comparable listings to assess pricing."` if fewer than 2 comparables are found — never raises.
+
+**Verdict thresholds** (% difference from comparable average):
+
+| Threshold | Label |
+|-----------|-------|
+| ≤ −20% | Great deal |
+| ≤ +5% | Fair price |
+| > +5% | Slightly above average |
+
+**Example output:**
+```
+Great deal: $22.00 vs. avg $34.50 / median $33.00 across 8 similar tops listings (-36% vs. average).
+```
+
+---
+
 ## Planning Loop
 
-`run_agent(query, wardrobe)` in [agent.py](agent.py) runs the tools in a fixed sequence. The loop decides what to do next by inspecting the previous step's output in the session dict. The search step includes up to three automatic retries with progressively looser constraints before erroring out.
+`run_agent(query, wardrobe)` in [agent.py](agent.py) runs the tools in a fixed sequence. The loop decides what to do next by inspecting the previous step's output in the session dict. The search step includes up to three automatic retries with progressively looser constraints before erroring out. Once an item is selected, `compare_price` runs immediately and always produces a verdict — it never blocks the loop.
 
 ```mermaid
 flowchart TD
@@ -114,7 +144,11 @@ flowchart TD
     C3 -- "results = []" --> D
     D --> Z([Return])
 
-    F --> G["suggest_outfit(selected_item, wardrobe)"]
+    F --> CP["compare_price(selected_item)"]
+    CP -- "≥2 comparables" --> PV["session[price_verdict] = verdict string"]
+    CP -- "<2 comparables" --> PV2["session[price_verdict] = 'Not enough comparables…'"]
+    PV --> G["suggest_outfit(selected_item, wardrobe)"]
+    PV2 --> G
 
     G -- "wardrobe empty" --> L["General styling advice: no specific pieces referenced"]
     G -- "wardrobe has items" --> H["session[outfit_suggestion] = result"]
@@ -144,8 +178,9 @@ session = {
     "query":             str,   # original user input
     "parsed":            dict,  # { description, size, max_price } from LLM parser
     "search_results":    list,  # all matching listing dicts
-    "selected_item":     dict,  # top result; input to suggest_outfit
+    "selected_item":     dict,  # top result; input to compare_price and suggest_outfit
     "wardrobe":          dict,  # user's wardrobe; passed to suggest_outfit
+    "price_verdict":     str,   # output of compare_price; always a non-None string after selected_item is set
     "outfit_suggestion": str,   # output of suggest_outfit; input to create_fit_card
     "fit_card":          str,   # final caption output
     "error":             str,   # set on early exit; None on success
@@ -153,7 +188,7 @@ session = {
 }
 ```
 
-If a step fails, `session["error"]` is set and `run_agent` returns immediately. All downstream fields remain `None`. The caller checks `session["error"]` first — `app.py` surfaces it in the listing panel and leaves the other two panels empty. When the search retries succeed with looser constraints, `session["search_notice"]` is prepended to the listing panel so the user knows what was adjusted.
+If a step fails, `session["error"]` is set and `run_agent` returns immediately. All downstream fields remain `None`. The caller checks `session["error"]` first — `app.py` surfaces it in the listing panel and leaves the other panels empty. `price_verdict` is always a string once `selected_item` is set (either a verdict or the "not enough comparables" fallback), so it is never `None` on a successful run. When the search retries succeed with looser constraints, `session["search_notice"]` is prepended to the listing panel so the user knows what was adjusted.
 
 ---
 
@@ -183,6 +218,14 @@ assert results == []  # test_no_match_returns_empty_list — passes
 Running `run_agent(query="designer ballgown size XXS under $5", wardrobe=...)` in the CLI test block exercises the retry path end-to-end.
 
 ![search_listings no-results error](img/search_no_result.png)
+
+---
+
+### `compare_price` — too few comparables
+
+**Failure mode:** Fewer than 2 listings in the dataset share both the same `category` and at least one `style_tag` with the selected item.
+
+**Agent response:** The tool returns `"Not enough comparable listings to assess pricing."` and the loop stores it in `session["price_verdict"]`. `suggest_outfit` and `create_fit_card` proceed normally — this never causes an early exit.
 
 ---
 
@@ -279,7 +322,7 @@ fitfindr/
 │   ├── test_search_listings.py
 │   ├── test_suggest_outfit.py
 │   └── test_create_fit_card.py
-├── tools.py                   # search_listings, suggest_outfit, create_fit_card
+├── tools.py                   # search_listings, suggest_outfit, create_fit_card, compare_price
 ├── agent.py                   # run_agent() — planning loop + state management
 ├── app.py                     # Gradio UI — handle_query() wires agent to interface
 ├── planning.md                # Design spec filled out before implementation
